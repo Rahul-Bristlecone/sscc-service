@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "sscc-service"
@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "flask>=3.1.0",
+    "flask-cors>=4.0.0",
+    "flask-sqlalchemy>=3.1.0",
     "marshmallow>=3.21.0",
     "flask-marshmallow>=1.2.0",
     "python-barcode[images]>=0.15.1",
@@ -17,6 +19,7 @@ dependencies = [
     "requests>=2.32.0",
     "python-dotenv>=1.0.1",
     "Pillow>=10.3.0",
+    "boto3>=1.35.0",
 ]
 
 [project.optional-dependencies]
