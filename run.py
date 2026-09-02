@@ -1,8 +1,8 @@
-"""Application entry point — factory pattern."""
+"""Application entry point."""
 
-from sscc import create_app
+from sscc.main import create_app
 
 app = create_app()
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=5000)

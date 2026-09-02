@@ -28,7 +28,7 @@ class SSCCRequestSchema(Schema):
     )
 
     @validates("po_number")
-    def validate_po_number(self, value: str) -> None:
+    def validate_po_number(self, value: str, **kwargs) -> None:
         if not value.strip():
             raise ValidationError("po_number must not be blank.")
 

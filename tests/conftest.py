@@ -2,7 +2,7 @@
 
 import pytest
 
-from sscc import create_app
+from sscc.main import create_app
 
 
 @pytest.fixture()
@@ -15,6 +15,9 @@ def app():
             "SSCC_EXTENSION_DIGIT": 0,
         }
     )
+    with app.app_context():
+        from sscc.extentions.db import db
+        db.create_all()
     yield app
 
 
