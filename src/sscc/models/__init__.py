@@ -1,3 +1,15 @@
-from sscc.models.sscc_model import SSCCModel, SSCCRequest, SSCCResult
+from sscc.models.sscc_model import (
+	CartonSequenceModel,
+	SSCCModel,
+	SSCCOrderModel,
+	SSCCRequest,
+	SSCCResult,
+)
 
-__all__ = ["SSCCModel", "SSCCRequest", "SSCCResult"]
+__all__ = [
+	"CartonSequenceModel",
+	"SSCCModel",
+	"SSCCOrderModel",
+	"SSCCRequest",
+	"SSCCResult",
+]

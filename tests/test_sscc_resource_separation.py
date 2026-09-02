@@ -37,7 +37,7 @@ def test_generate_persists_sscc_record_before_invoking_pdf_lambda(app, monkeypat
         assert response.status_code == 202
         assert SSCCModel.query.count() == 1
         assert SSCCModel.query.first().sscc_code.startswith("0")
-        assert called["FunctionName"] == "sscc-pdf-generator"
+        assert called["FunctionName"] == "sscc-label-generator"
 
 
 def test_generate_invokes_pdf_lambda_instead_of_rendering_pdf(app, monkeypatch):
@@ -84,7 +84,7 @@ def test_generate_invokes_pdf_lambda_instead_of_rendering_pdf(app, monkeypatch):
 
     assert response.status_code == 202
     assert response.get_json()["message"] == "PDF generation started"
-    assert called["FunctionName"] == "sscc-pdf-generator"
+    assert called["FunctionName"] == "sscc-label-generator"
     assert called["InvocationType"] == "Event"
     assert called["Payload"]["sscc_code"] == result.sscc_code
 

@@ -21,11 +21,26 @@ class SSCCRequestSchema(Schema):
         validate=validate.Range(min=1),
         metadata={"description": "Number of units to deliver"},
     )
+    pack_size = fields.Int(
+        load_default=1,
+        validate=validate.Range(min=1),
+        metadata={"description": "Units packed in each carton"},
+    )
+    carton_printed = fields.Int(
+        load_default=None,
+        validate=validate.Range(min=0),
+        metadata={"description": "User override for the number of cartons printed"},
+    )
     product = fields.Str(load_default=None, metadata={"description": "Product description"})
     carton_number = fields.Str(
         load_default=None,
         metadata={"description": "Pre-formed carton number (auto-generated if omitted)"},
     )
+
+    @validates("carton_number")
+    def validate_carton_number(self, value: str, **kwargs) -> None:
+        if value is not None and (not value.isdigit() or len(value) != 7):
+            raise ValidationError("carton_number must contain exactly 7 digits.")
 
     @validates("po_number")
     def validate_po_number(self, value: str, **kwargs) -> None:
@@ -46,6 +61,7 @@ class SSCCResultSchema(Schema):
     store = fields.Str()
     location = fields.Str()
     quantities = fields.Int()
+    pack_size = fields.Int()
     product = fields.Str()
 
 

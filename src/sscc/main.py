@@ -6,9 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, jsonify
+from flask_jwt_extended import JWTManager
+from flask_smorest import Api
 from flask_cors import CORS
 
-from sscc.extensions import ma
 from sscc.extentions.db import db
 from sscc.resources import register_blueprints
 
@@ -39,7 +40,6 @@ def create_app(config_object: str = "sscc.config.Config") -> Flask:
     
     # Initialize extensions
     db.init_app(sscc_service)
-    ma.init_app(sscc_service)
     
     # Configure CORS for development and production
     allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")

@@ -26,15 +26,16 @@ class TestGetInitials:
 class TestBuildCartonNumber:
     def test_format(self):
         cn = build_carton_number("Beta Logistics", "Acme Retail", 1)
-        assert cn == "BLAR0000001"
+        assert cn == "0000001"
 
     def test_sequence_padding(self):
         cn = build_carton_number("Beta Logistics", "Acme Retail", 9999999)
-        assert cn == "BLAR9999999"
+        assert cn == "9999999"
 
     def test_length(self):
         cn = build_carton_number("Supplier One", "Customer Two", 42)
-        assert len(cn) == 4 + 7  # 4 initials + 7-digit number
+        assert len(cn) == 7
+        assert cn.isdigit()
 
 
 class TestCheckDigit:

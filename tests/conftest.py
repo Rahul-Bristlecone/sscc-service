@@ -11,7 +11,7 @@ def app():
     app.config.update(
         {
             "TESTING": True,
-            "GS1_COMPANY_PREFIX": "1234567",
+            "GS1_COMPANY_PREFIX": "123456789",
             "SSCC_EXTENSION_DIGIT": 0,
         }
     )

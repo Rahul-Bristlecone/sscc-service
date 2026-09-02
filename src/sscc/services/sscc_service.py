@@ -2,22 +2,42 @@
 
 import threading
 import re
+from math import ceil
 
 from flask import current_app
 
-from sscc.models.sscc_model import SSCCRequest, SSCCResult
+from sscc.extentions.db import db
+from sscc.models.sscc_model import CartonSequenceModel, SSCCRequest, SSCCResult
 
-# Thread-safe sequential carton counter (per-process; reset on restart)
+# The lock protects concurrent requests within one application process. The
+# database row makes the sequence durable across process restarts.
 _counter_lock = threading.Lock()
-_carton_counter: int = 1
 
 
 def _next_carton_sequence() -> int:
-    global _carton_counter
     with _counter_lock:
-        seq = _carton_counter
-        _carton_counter += 1
+        sequence = db.session.get(CartonSequenceModel, 1)
+        if sequence is None:
+            sequence = CartonSequenceModel(sequence_id=1, next_number=1)
+            db.session.add(sequence)
+            db.session.flush()
+        seq = sequence.next_number
+        if seq > 9_999_999:
+            raise ValueError("The 7-digit carton-number sequence is exhausted.")
+        sequence.next_number += 1
+        db.session.flush()
     return seq
+
+
+def _advance_carton_sequence(carton_number: str) -> None:
+    with _counter_lock:
+        sequence = db.session.get(CartonSequenceModel, 1)
+        if sequence is None:
+            sequence = CartonSequenceModel(sequence_id=1, next_number=1)
+            db.session.add(sequence)
+            db.session.flush()
+        sequence.next_number = max(sequence.next_number, int(carton_number) + 1)
+        db.session.flush()
 
 
 def _get_initials(name: str, count: int = 2) -> str:
@@ -29,12 +49,11 @@ def _get_initials(name: str, count: int = 2) -> str:
 
 def build_carton_number(supplier_name: str, customer_name: str, sequence: int) -> str:
     """
-    Format: <2 supplier initials><2 customer initials><7-digit zero-padded sequence>
-    e.g. ABXY0000001
+    Format: a company-assigned 7-digit numeric sequence.
     """
-    sup = _get_initials(supplier_name, 2)
-    cus = _get_initials(customer_name, 2)
-    return f"{sup}{cus}{sequence:07d}"
+    if not 1 <= sequence <= 9_999_999:
+        raise ValueError("Carton sequence must be between 1 and 9,999,999.")
+    return f"{sequence:07d}"
 
 
 def _calculate_sscc_check_digit(seventeen_digits: str) -> int:
@@ -55,30 +74,31 @@ def generate_sscc(request: SSCCRequest) -> SSCCResult:
     """
     Build an 18-digit GS1 SSCC and return a populated SSCCResult.
 
-    SSCC layout (18 digits total):
+        SSCC layout (20 digits total including AI 00):
+            [2] application identifier — always 00
       [1] extension digit  — from request.check_digit
-      [7] GS1 company prefix — from GS1_COMPANY_PREFIX config
-      [9] serial reference  — 7-digit carton sequence left-padded to 9 digits
+            [9] GS1 company prefix — from GS1_COMPANY_PREFIX config
+            [7] serial reference  — the 7-digit carton number
       [1] check digit       — calculated via GS1 Mod-10
     """
     company_prefix: str = current_app.config["GS1_COMPANY_PREFIX"]
+    if not company_prefix.isdigit() or len(company_prefix) != 9:
+        raise ValueError("GS1_COMPANY_PREFIX must contain exactly 9 digits.")
 
     # Resolve or generate carton number
     if request.carton_number:
         carton_number = request.carton_number
-        # Extract the trailing 7-digit numeric sequence for the serial reference
-        match = re.search(r"(\d{7})$", carton_number)
-        sequence_digits = match.group(1) if match else f"{_next_carton_sequence():07d}"
+        sequence_digits = carton_number
+        _advance_carton_sequence(carton_number)
     else:
         seq = _next_carton_sequence()
-        carton_number = build_carton_number(request.supplier_name, request.customer_name, seq)
+        carton_number = build_carton_number("", "", seq)
         sequence_digits = f"{seq:07d}"
 
-    # Build the 17-digit payload: extension(1) + prefix(7) + serial(9)
-    serial_reference = sequence_digits.zfill(9)
-    seventeen = f"{request.check_digit}{company_prefix}{serial_reference}"
+    # Build the 17-digit payload: extension(1) + prefix(9) + serial(7).
+    seventeen = f"{request.check_digit}{company_prefix}{sequence_digits}"
     check = _calculate_sscc_check_digit(seventeen)
-    sscc_code = f"{seventeen}{check}"
+    sscc_code = f"00{seventeen}{check}"
 
     return SSCCResult(
         sscc_code=sscc_code,
@@ -89,5 +109,6 @@ def generate_sscc(request: SSCCRequest) -> SSCCResult:
         store=request.store,
         location=request.location,
         quantities=request.quantities,
+        pack_size=request.pack_size,
         product=request.product or "",
     )

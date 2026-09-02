@@ -72,7 +72,7 @@ sequenceDiagram
 
 **3. SSCC Generation**
 - Service calls `generate_sscc()` to produce:
-  - 18-digit GS1-compliant SSCC (Mod-10 check digit)
+  - 20-digit barcode: AI `00` plus an 18-digit SSCC (Mod-10 check digit)
   - Carton number (auto-generated or custom)
 
 **4. Database Persistence**
@@ -97,8 +97,9 @@ sequenceDiagram
 
 | Feature | Detail |
 |---|---|
-| SSCC generation | 18-digit GS1-compliant SSCC via Mod-10 check digit |
-| Carton numbering | Auto-generated from supplier/customer initials + 7-digit sequence |
+| SSCC generation | 20-digit barcode with AI `00` and 18-digit SSCC |
+| Carton numbering | Company-wide, zero-padded 7-digit numeric sequence |
+| Order tracking | Pack-size carton counts and status (`0`, `1`, or `2`) |
 | Database persistence | Stores all SSCC metadata for traceability and audit |
 | Order integration | Fetches order data from `order-service:5007` |
 | Lambda orchestration | Asynchronous PDF generation via AWS Lambda |
@@ -166,19 +167,22 @@ Generate SSCC and trigger Lambda-based PDF label generation.
   "location": "Warehouse A",
   "check_digit": 0,
   "quantities": 100,
+  "pack_size": 10,
   "product": "Widget XL",
-  "carton_number": "BLAR0000001"
+  "carton_number": "0000001"
 }
 ```
 > `carton_number` is optional. If omitted, it is auto-generated as  
-> `<2 supplier initials><2 customer initials><7-digit sequence>` e.g. `BLAR0000001`.
+> a company-wide, zero-padded 7-digit numeric sequence, e.g. `0000001`.
 
 **Response:** HTTP 202 Accepted
 ```json
 {
   "message": "PDF generation started",
-  "sscc_code": "012345670000000014",
-  "carton_number": "BLAR0000001"
+  "sscc_code": "00012345678900000011",
+  "carton_number": "0000001",
+  "carton_count": 1,
+  "status": 2
 }
 ```
 > SSCC record is persisted to database. PDF generation happens asynchronously in Lambda.
@@ -191,8 +195,8 @@ Generate SSCC and return metadata as JSON only (no PDF or Lambda invocation).
 **Response:** HTTP 201 Created
 ```json
 {
-  "sscc_code": "012345670000000014",
-  "carton_number": "BLAR0000001",
+  "sscc_code": "00012345678900000011",
+  "carton_number": "0000001",
   "po_number": "PO-2024-001",
   "customer_name": "Acme Retail",
   "supplier_name": "Beta Logistics",
@@ -213,7 +217,7 @@ Fetch order details and generate SSCC with Lambda-based PDF.
 {
   "po_number": "PO-2024-999",
   "check_digit": 5,
-  "carton_number": "CUST0000042"  # optional
+  "carton_number": "0000042"  # optional
 }
 ```
 
@@ -240,8 +244,8 @@ The `sscc_labels` table persists all SSCC generation records:
 | Column | Type | Notes |
 |---|---|---|
 | `sscc_id` | Integer | Primary key |
-| `sscc_code` | String(18) | Unique, GS1-compliant SSCC |
-| `carton_number` | String(32) | Business key (with po_number) |
+| `sscc_code` | String(20) | Unique barcode including AI `00` |
+| `carton_number` | String(7) | Unique company-assigned numeric carton sequence |
 | `po_number` | String(128) | Purchase order reference |
 | `customer_name` | String(128) | Customer name |
 | `supplier_name` | String(128) | Supplier name |
@@ -249,13 +253,16 @@ The `sscc_labels` table persists all SSCC generation records:
 | `location` | String(128) | Warehouse/DC location |
 | `check_digit` | Integer | GS1 extension digit (0-9) |
 | `quantities` | Integer | Carton quantity |
+| `pack_size` | Integer | Units packed in each carton; defaults to 1 |
+| `carton_count` | Integer | Number of generated cartons for the PO |
+| `status` | Integer | `0` not generated, `1` all generated, `2` partially generated |
 | `product` | String(256) | Product description |
 | `created_at` | DateTime | Auto-set to now (UTC) |
 | `updated_at` | DateTime | Auto-set to now (UTC), updated on changes |
 
 **Unique Constraints:**
 - `sscc_code` (one SSCC per carton)
-- `(po_number, carton_number)` (one carton per PO)
+- `carton_number` (company-wide unique carton sequence)
 
 ---
 
@@ -311,7 +318,7 @@ The `sscc_labels` table persists all SSCC generation records:
 | Variable | Default | Purpose |
 |---|---|---|
 | `SECRET_KEY` | `dev-secret-change-in-production` | Flask session secret |
-| `GS1_COMPANY_PREFIX` | `1234567` | Your assigned GS1 company prefix (7 digits) |
+| `GS1_COMPANY_PREFIX` | `123456789` | Your assigned 9-digit GS1 company prefix |
 | `SSCC_EXTENSION_DIGIT` | `0` | GS1 extension digit for SSCC |
 | `ORDER_SERVICE_URL` | `http://order-service:5007` | Order service base URL |
 | `SQLALCHEMY_DATABASE_URI` | `sqlite:///:memory:` | Database connection string |
@@ -370,7 +377,7 @@ Fetch order details from the order service, then return a PDF label.
 ## SSCC Structure
 
 ```
-[ Extension (1) ][ GS1 Company Prefix (7) ][ Serial Reference (9) ][ Check Digit (1) ]
+[ AI (2) ][ Extension (1) ][ GS1 Company Prefix (9) ][ Serial Reference (7) ][ Check Digit (1) ]
        ↑                    ↑                        ↑                      ↑
   check_digit input    GS1_COMPANY_PREFIX      from carton seq.       GS1 Mod-10
 ```
@@ -382,7 +389,7 @@ Fetch order details from the order service, then return a PDF label.
 | Variable | Default | Description |
 |---|---|---|
 | `SECRET_KEY` | `dev-secret-...` | Flask secret key |
-| `GS1_COMPANY_PREFIX` | `1234567` | Your GS1-assigned 7-digit company prefix |
+| `GS1_COMPANY_PREFIX` | `123456789` | Your GS1-assigned 9-digit company prefix |
 | `SSCC_EXTENSION_DIGIT` | `0` | Default extension digit |
 | `ORDER_SERVICE_URL` | `http://order-service:5007` | Upstream order service URL |
 
@@ -402,7 +409,7 @@ flask run
 ```bash
 docker build -t sscc-service .
 docker run -p 5000:5000 \
-  -e GS1_COMPANY_PREFIX=1234567 \
+  -e GS1_COMPANY_PREFIX=123456789 \
   -e ORDER_SERVICE_URL=http://order-service:5007 \
   sscc-service
 ```
